@@ -2,12 +2,18 @@
 #
 # Interactive render loop that runs inside the sidebar pane.
 # Shows pane list; use Up/Down (or k/j) to select, Enter to focus.
+# Mouse clicks on rows switch focus.
+# Mouse wheel scrolls selection.
 #
 
 set -euo pipefail
 
 CURRENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$CURRENT_DIR/helpers.sh"
+
+# Enable mouse tracking on entry, disable on exit.
+printf '\e[?1000h\e[?1006h'
+trap 'printf "\e[?1000l\e[?1006l"' EXIT
 
 # ANSI helpers
 ansi_fg()    { printf '\033[38;5;%sm' "$1"; }
@@ -61,16 +67,32 @@ fit_width() {
   fi
 }
 
+# Parse an SGR mouse sequence: ESC [ < Bt ; Cx ; Cy M/m
+# Returns "btn cx cy" on stdout.
+parse_sgr_mouse() {
+  local seq="$1"
+  # strip leading ESC[< and trailing M/m
+  local inner="${seq#*<}"
+  inner="${inner%[Mm]}"
+  local IFS=';'
+  local -a parts
+  read -ra parts <<< "$inner"
+  printf '%s %s %s' "${parts[0]}" "${parts[1]}" "${parts[2]}"
+}
+
 read_key() {
   local key=""
-  if IFS= read -rs -t 2 key; then
+  if IFS= read -rs -t 2 -n1 key; then
     if [[ "$key" == $'\e' ]]; then
       local rest=""
-      IFS= read -rs -t 0.05 -n2 rest || true
+      IFS= read -rs -t 0.1 -n10 rest || true
       key="$key$rest"
     fi
+    printf '%s' "$key"
+  else
+    # timeout -- use a sentinel so we don't confuse it with Enter
+    printf 'TIMEOUT'
   fi
-  printf '%s' "$key"
 }
 
 selected=0
@@ -116,6 +138,10 @@ while true; do
   ACCENT_NUM="$(resolve_accent)"
   DIM_FG="$(colour_to_ansi "colour8")"
 
+  # Account for the 2-char prefix ("> " or "  ") so lines don't wrap.
+  content_width=$((PANE_WIDTH - 2))
+  [ "$content_width" -lt 1 ] && content_width=1
+
   # Draw
   printf '\033[2J\033[H'
 
@@ -132,7 +158,7 @@ while true; do
       display_text="${idx}:${cmd}"
     fi
 
-    line="$(fit_width "$display_text" "$PANE_WIDTH")"
+    line="$(fit_width "$display_text" "$content_width")"
 
     if [ "$i" -eq "$selected" ]; then
       if [ "$active" = "1" ] && [ -n "$ACCENT_NUM" ]; then
@@ -163,6 +189,9 @@ while true; do
   key="$(read_key)"
 
   case "$key" in
+    TIMEOUT)
+      : # just refresh the display
+      ;;
     $'\e[A'|'k')
       selected=$((selected - 1))
       [ "$selected" -lt 0 ] && selected=0
@@ -171,9 +200,29 @@ while true; do
       selected=$((selected + 1))
       [ "$selected" -ge "$pane_count" ] && selected=$((pane_count - 1))
       ;;
-    ''|$'\n'|$'\r')
+    $'\n'|$'\r')
       target_id="${pane_ids[$selected]}"
       tmux select-pane -t "$target_id"
+      ;;
+    # SGR left-click press or release
+    $'\e[<0;'*'M'|$'\e[<0;'*'m')
+      read -r btn cx cy <<< "$(parse_sgr_mouse "$key")"
+      # cy is 1-indexed; our list starts at row 1.
+      clicked_idx=$((cy - 1))
+      if [ "$clicked_idx" -ge 0 ] && [ "$clicked_idx" -lt "$pane_count" ]; then
+        selected="$clicked_idx"
+        target_id="${pane_ids[$selected]}"
+        tmux select-pane -t "$target_id"
+      fi
+      ;;
+    # SGR wheel up (64) / wheel down (65)
+    $'\e[<64;'*'M')
+      selected=$((selected - 1))
+      [ "$selected" -lt 0 ] && selected=0
+      ;;
+    $'\e[<65;'*'M')
+      selected=$((selected + 1))
+      [ "$selected" -ge "$pane_count" ] && selected=$((pane_count - 1))
       ;;
   esac
 done
