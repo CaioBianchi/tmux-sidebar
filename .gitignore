@@ -1,0 +1,8 @@
+# macOS / Linux
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Test artifacts
+*.log
