@@ -1,14 +1,15 @@
 # tmux-sidebar
 
-A tmux plugin that adds **side status bars** (left or right) with **expand / collapse** support. The sidebar displays pane titles and process names, inherits your existing tmux status-bar theming, and can be cycled through four positions — **left, right, top, and bottom** — with a single key press.
+A tmux plugin that adds an **interactive sidebar** on the **left or right** side of your window. The sidebar displays pane titles and process names, inherits your existing tmux status-bar theming, and lets you **select a pane with arrow keys and press Enter to focus it**.
 
 ---
 
 ## ✨ Features
 
-- **Four positions** — left, right, top, bottom (toggle with a hotkey).
-- **Expand / collapse** — show only indicators when collapsed, full pane names + processes when expanded.
+- **Left / right positions** — toggle with a single key press.
+- **Interactive pane list** — navigate with ↑/↓ (or `k`/`j`) and press **Enter** to focus the selected pane.
 - **Native theming** — sidebar automatically uses your `status-style`, `window-status-current-style`, and other tmux colour settings.
+- **Focus-aware** — when the sidebar opens, focus stays on your main pane; focus only moves when you explicitly choose a pane.
 - **TPM compatible** — one-line install via the Tmux Plugin Manager.
 - **Lightweight** — pure Bash, no external dependencies.
 
@@ -46,10 +47,19 @@ run-shell ~/.tmux/plugins/tmux-sidebar/tmux-sidebar.tmux
 
 | Key | Action |
 |-----|--------|
-| `prefix + b` | Cycle sidebar position (`left → right → top → bottom → left`). |
-| `prefix + B` | Toggle sidebar between **expanded** and **collapsed**. |
+| `prefix + b` | Toggle sidebar between **left** and **right**. |
 
-> The keys are configurable — see [Configuration](#configuration) below.
+> The key is configurable — see [Configuration](#configuration) below.
+
+### Using the sidebar
+
+When the sidebar is visible:
+
+| Key | Action |
+|-----|--------|
+| `↑` / `k` | Move selection up |
+| `↓` / `j` | Move selection down |
+| `Enter` | Focus the selected pane |
 
 ---
 
@@ -59,26 +69,19 @@ Add any of the following options to your `~/.tmux.conf` *before* the TPM `run-sh
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `@sidebar-position` | `right` | Starting position (`left`, `right`, `top`, `bottom`). |
-| `@sidebar-state` | `collapsed` | Starting state (`expanded`, `collapsed`). |
-| `@sidebar-enabled` | `0` | Auto-start the sidebar when tmux loads (`0` = off, `1` = on). |
-| `@sidebar-width` | `25` | Width when side position is **expanded**. |
-| `@sidebar-collapsed-width` | `4` | Width when side position is **collapsed**. |
-| `@sidebar-height` | `3` | Height when top / bottom position is **expanded**. |
-| `@sidebar-collapsed-height` | `1` | Height when top / bottom position is **collapsed**. |
-| `@sidebar-key` | `b` | Key (after prefix) to **cycle position**. |
-| `@sidebar-toggle-key` | `B` | Key (after prefix) to **toggle expand / collapse**. |
+| `@sidebar-position` | `left` | Starting position (`left` or `right`). |
+| `@sidebar-enabled` | `1` | Auto-start the sidebar when tmux loads (`0` = off, `1` = on). |
+| `@sidebar-width` | `25` | Width of the sidebar. |
+| `@sidebar-key` | `b` | Key (after prefix) to **toggle position** (left ↔ right). |
 | `@sidebar-refresh-interval` | `5` | Seconds between sidebar content refreshes. |
 
 ### Example
 
 ```tmux
-set -g @sidebar-position    "left"
-set -g @sidebar-state       "expanded"
+set -g @sidebar-position    "right"
 set -g @sidebar-enabled     "1"
 set -g @sidebar-width       "30"
 set -g @sidebar-key         "s"
-set -g @sidebar-toggle-key  "S"
 
 # ... other plugins ...
 set -g @plugin 'CaioBianchi/tmux-sidebar'
@@ -97,9 +100,8 @@ bash tests/run_tests.sh
 
 Tests cover:
 - Helper functions (colour extraction, option reading).
-- Sidebar creation / destruction in all four positions.
-- Expand / collapse dimension changes.
-- Position cycling with state preservation.
+- Sidebar creation / destruction in left and right positions.
+- Position cycling.
 
 ---
 
@@ -111,14 +113,12 @@ tmux-sidebar/
 ├── scripts/
 │   ├── helpers.sh             # Shared functions (options, colours, pane ID helpers)
 │   ├── sidebar.sh             # Create / destroy sidebar pane
-│   ├── toggle.sh              # Expand ↔ collapse
-│   ├── cycle.sh               # Rotate through positions
-│   └── render.sh              # Loop that paints sidebar content
+│   ├── cycle.sh               # Toggle between left and right
+│   └── render.sh              # Interactive pane list running inside the sidebar
 ├── tests/
 │   ├── framework.sh           # Lightweight test harness
 │   ├── test_helpers.sh        # Unit tests
 │   ├── test_sidebar.sh        # Integration: create / destroy
-│   ├── test_toggle.sh         # Integration: expand / collapse
 │   ├── test_cycle.sh          # Integration: position cycling
 │   └── run_tests.sh           # Test runner
 └── README.md

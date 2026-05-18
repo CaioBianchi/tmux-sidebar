@@ -10,7 +10,6 @@ source "$CURRENT_DIR/helpers.sh"
 
 CMD="${1:-create}"
 POSITION="${2:-$(get_position)}"
-STATE="${3:-$(get_state)}"
 
 # ─── Destroy ───────────────────────────────────────────────────────
 
@@ -26,29 +25,14 @@ destroy_sidebar() {
 
 create_pane_sidebar() {
   local position="$1"
-  local state="$2"
 
   local size
-  if [ "$position" = "left" ] || [ "$position" = "right" ]; then
-    if [ "$state" = "expanded" ]; then
-      size="$(get_option "@sidebar-width" "25")"
-    else
-      size="$(get_option "@sidebar-collapsed-width" "4")"
-    fi
-  else
-    if [ "$state" = "expanded" ]; then
-      size="$(get_option "@sidebar-height" "3")"
-    else
-      size="$(get_option "@sidebar-collapsed-height" "1")"
-    fi
-  fi
+  size="$(get_option "@sidebar-width" "25")"
 
   local split_args
   case "$position" in
     left)   split_args="-hb -l ${size}" ;;
     right)  split_args="-h  -l ${size}" ;;
-    top)    split_args="-vb -l ${size}" ;;
-    bottom) split_args="-v  -l ${size}" ;;
   esac
 
   # Read native status-bar theming.
@@ -67,13 +51,9 @@ create_pane_sidebar() {
   pane_id="$(tmux split-window -d $split_args -P -F '#{pane_id}' \
     "bash '$CURRENT_DIR/render.sh'")"
 
-  # Lock input so the user cannot type into the sidebar.
-  tmux select-pane -t "$pane_id" -d
-
-  # Tag it and record state / position.
+  # Tag it and record position.
   tmux set-option -p -t "$pane_id" "@sidebar-pane" "1"
   tmux set-option -p -t "$pane_id" "@sidebar-position" "$position"
-  tmux set-option -gq "@sidebar-state" "$state"
   tmux set-option -gq "@sidebar-position" "$position"
 
   # Apply native status-bar colours to the pane.
@@ -88,11 +68,11 @@ create_pane_sidebar() {
 case "$CMD" in
   create)
     case "$POSITION" in
-      left|right|top|bottom)
+      left|right)
         if is_sidebar_present; then
           destroy_sidebar
         fi
-        create_pane_sidebar "$POSITION" "$STATE"
+        create_pane_sidebar "$POSITION"
         ;;
       *)
         echo "tmux-sidebar: invalid position '$POSITION'" >&2

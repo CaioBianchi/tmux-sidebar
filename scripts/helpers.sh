@@ -17,16 +17,8 @@ get_option() {
   fi
 }
 
-set_state() {
-  tmux set-option -gq "@sidebar-state" "$1"
-}
-
-get_state() {
-  get_option "@sidebar-state" "collapsed"
-}
-
 get_position() {
-  get_option "@sidebar-position" "right"
+  get_option "@sidebar-position" "left"
 }
 
 set_position() {

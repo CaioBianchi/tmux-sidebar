@@ -18,11 +18,11 @@ SESSION="__tmux_sidebar_test_sidebar"
 init_test_server
 setup_tmux_session "$SESSION"
 
-# ── Create sidebar on the right ─────────────────────────────────────
+# ── Create sidebar on the left (default) ──────────────────────────
 
 assert_true "tmux has-session -t $SESSION" "session exists"
 
-bash "$PROJECT_DIR/scripts/sidebar.sh" create right collapsed >/dev/null 2>&1 || true
+bash "$PROJECT_DIR/scripts/sidebar.sh" create left >/dev/null 2>&1 || true
 sleep 0.5
 
 assert_true "[ -n \"\$(get_sidebar_pane_id)\" ]" "sidebar pane was created"
@@ -33,35 +33,21 @@ assert_contains "$(tmux display-message -p -t "$SIDEBAR_ID" '#{@sidebar-pane}')"
   "sidebar pane is tagged with @sidebar-pane=1"
 
 assert_contains "$(tmux display-message -p -t "$SIDEBAR_ID" '#{@sidebar-position}')" \
-  "right" \
-  "sidebar pane has position=right"
+  "left" \
+  "sidebar pane has position=left"
 
-# ── Create sidebar on the left (should replace right) ──────────────
+# ── Create sidebar on the right (should replace left) ─────────────
 
-bash "$PROJECT_DIR/scripts/sidebar.sh" create left expanded >/dev/null 2>&1 || true
+bash "$PROJECT_DIR/scripts/sidebar.sh" create right >/dev/null 2>&1 || true
 sleep 0.5
 
 assert_contains "$(tmux display-message -p -t "$(get_sidebar_pane_id)" '#{@sidebar-position}')" \
-  "left" \
-  "sidebar switched to left"
+  "right" \
+  "sidebar switched to right"
 
 # Count panes – should be exactly 2 (main + sidebar).
 PANE_COUNT="$(tmux list-panes -t "$SESSION:test_window" | wc -l | tr -d ' ')"
 assert_equals "2" "$PANE_COUNT" "exactly two panes after switching position"
-
-# ── Create top / bottom ────────────────────────────────────────────
-
-bash "$PROJECT_DIR/scripts/sidebar.sh" create top collapsed >/dev/null 2>&1 || true
-sleep 0.5
-assert_contains "$(tmux display-message -p -t "$(get_sidebar_pane_id)" '#{@sidebar-position}')" \
-  "top" \
-  "sidebar can be positioned top"
-
-bash "$PROJECT_DIR/scripts/sidebar.sh" create bottom expanded >/dev/null 2>&1 || true
-sleep 0.5
-assert_contains "$(tmux display-message -p -t "$(get_sidebar_pane_id)" '#{@sidebar-position}')" \
-  "bottom" \
-  "sidebar can be positioned bottom"
 
 # ── Destroy ────────────────────────────────────────────────────────
 
