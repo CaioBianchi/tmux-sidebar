@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
 # Render loop that runs inside the sidebar pane.
+# Re-draws content every REFRESH_INTERVAL seconds.
 #
 
 set -euo pipefail
@@ -12,13 +13,69 @@ REFRESH_INTERVAL="$(get_option "@sidebar-refresh-interval" "5")"
 
 # ─── Helpers ───────────────────────────────────────────────────────
 
+# ANSI helpers.
+ansi_fg()    { printf '\033[38;5;%sm' "$1"; }
+ansi_bg()    { printf '\033[48;5;%sm' "$1"; }
+ansi_bold()  { printf '\033[1m'; }
+ansi_reset() { printf '\033[0m'; }
+
+# Try to translate a tmux colour name to an ANSI 256 index.
+#   "colour46" → 46
+#   "red"      → 1
+#   "default"  → ""
+#   "#ffffff"  → "" (hex not supported here, fall back to ANSI)
+colour_to_ansi() {
+  local raw="$1"
+  if [[ "$raw" =~ ^colour([0-9]+)$ ]]; then
+    echo "${BASH_REMATCH[1]}"
+  elif [ "$raw" = "default" ] || [ -z "$raw" ]; then
+    echo ""
+  else
+    # Keep a tiny map of common named colours; everything else falls back.
+    case "$raw" in
+      black)   echo "0"  ;;
+      red)     echo "1"  ;;
+      green)   echo "2"  ;;
+      yellow)  echo "3"  ;;
+      blue)    echo "4"  ;;
+      magenta) echo "5"  ;;
+      cyan)    echo "6"  ;;
+      white)   echo "7"  ;;
+      *)       echo ""  ;;
+    esac
+  fi
+}
+
+# Resolve accent color to an ANSI fg index.
+# Priority:
+# 1. @sidebar-accent-color global option
+# 2. @sidebar-accent pane-local option (set by sidebar.sh)
+# 3. window-status-current-style fg
+# 4. Default to tmux "colour4" (blue)
+resolve_accent() {
+  # 1. global override
+  local accent="$(get_option "@sidebar-accent-color" "")"
+  if [ -z "$accent" ]; then
+    # 2. pane-local override
+    accent="$(tmux show-option -pqv '@sidebar-accent' 2>/dev/null || true)"
+  fi
+  if [ -z "$accent" ]; then
+    # 3. tmux active-window fg
+    accent="$(get_window_status_current_fg)"
+  fi
+  if [ -z "$accent" ]; then
+    accent="colour4"
+  fi
+  colour_to_ansi "$accent"
+}
+
 # Print text, truncating or padding to exactly $width characters.
 fit_width() {
   local text="$1"
   local width="$2"
   local len="${#text}"
   if [ "$len" -gt "$width" ]; then
-    echo "${text:0:$width}"
+    printf '%s' "${text:0:$width}"
   else
     printf "%-${width}s" "$text"
   fi
@@ -27,22 +84,17 @@ fit_width() {
 # ─── Main loop ─────────────────────────────────────────────────────
 
 while true; do
-  # Reload state / position every iteration so external changes are picked up.
   STATE="$(get_state)"
   POSITION="$(tmux display-message -p '#{@sidebar-position}' 2>/dev/null || true)"
 
-  # Pane dimensions.
   PANE_WIDTH="$(tmux display-message -p '#{pane_width}' 2>/dev/null || echo 10)"
   PANE_HEIGHT="$(tmux display-message -p '#{pane_height}' 2>/dev/null || echo 1)"
 
-  # Get panes in current window, excluding the sidebar itself.
   PANES_INFO="$(tmux list-panes -F '#{pane_index}|#{pane_title}|#{pane_current_command}|#{pane_active}|#{@sidebar-pane}' 2>/dev/null || true)"
 
-  # Read native status colours.
-  BG="$(get_status_bg)"
-  FG="$(get_status_fg)"
-  [ -z "$BG" ] && BG="default"
-  [ -z "$FG" ] && FG="default"
+  # Resolve theming.
+  ACCENT_NUM="$(resolve_accent)"
+  DIM_FG="$(colour_to_ansi "colour8")"   # grey for inactive text
 
   # Build output.
   OUTPUT=""
@@ -55,36 +107,44 @@ while true; do
 
       if [ "$STATE" = "collapsed" ]; then
         if [ "$active" = "1" ]; then
-          line="▸${idx}"
+          line="${idx}"
         else
-          line=" ${idx}"
+          line="${idx}"
         fi
       else
         # Expanded: show index + command (or title if different from shell).
         display_text=""
-        if [ -n "$title" ] && [ "$title" != "$cmd" ]; then
+        if [ -n "$title" ] && [ "$title" != "$cmd" ] && [ "$title" != "$(hostname -s 2>/dev/null)" ]; then
           display_text="${idx}:${title}"
         else
           display_text="${idx}:${cmd}"
         fi
         if [ "$active" = "1" ]; then
-          line="▸ ${display_text}"
+          line="${display_text}"
         else
-          line="  ${display_text}"
+          line="${display_text}"
         fi
       fi
 
       line="$(fit_width "$line" "$PANE_WIDTH")"
 
       if [ "$active" = "1" ]; then
-        # Reverse video for active pane.
-        OUTPUT="${OUTPUT}\033[7m${line}\033[0m\n"
+        # Compact highlight: only the text itself, not a full-line block.
+        if [ -n "$ACCENT_NUM" ]; then
+          OUTPUT="${OUTPUT}$(ansi_bold)$(ansi_fg "$ACCENT_NUM")${line}$(ansi_reset)\n"
+        else
+          OUTPUT="${OUTPUT}$(ansi_bold)${line}$(ansi_reset)\n"
+        fi
       else
-        OUTPUT="${OUTPUT}${line}\n"
+        # Dimmed inactive item.
+        if [ -n "$DIM_FG" ]; then
+          OUTPUT="${OUTPUT}$(ansi_fg "$DIM_FG")${line}$(ansi_reset)\n"
+        else
+          OUTPUT="${OUTPUT}${line}\n"
+        fi
       fi
     done <<< "$PANES_INFO"
 
-    # Clear screen and draw.
     printf '\033[2J\033[H'
     printf '%b' "$OUTPUT"
 
@@ -97,14 +157,18 @@ while true; do
 
       display_text="${idx}:${cmd}"
       if [ "$active" = "1" ]; then
-        line="${line}[${display_text}] "
+        if [ -n "$ACCENT_NUM" ]; then
+          line="${line}$(ansi_bold)$(ansi_fg "$ACCENT_NUM")[${display_text}]$(ansi_reset) "
+        else
+          line="${line}$(ansi_bold)[${display_text}]$(ansi_reset) "
+        fi
       else
         line="${line}${display_text} "
       fi
     done <<< "$PANES_INFO"
 
     printf '\033[2J\033[H'
-    echo "$line"
+    printf '%s\n' "$line"
 
     # If expanded and we have extra rows, print pane titles on subsequent lines.
     if [ "$STATE" = "expanded" ] && [ "$PANE_HEIGHT" -gt 1 ]; then
@@ -112,7 +176,7 @@ while true; do
       while IFS='|' read -r idx title cmd active is_sidebar; do
         [ "$is_sidebar" = "1" ] && continue
         [ -z "$idx" ] && continue
-        if [ -n "$title" ] && [ "$title" != "$cmd" ]; then
+        if [ -n "$title" ] && [ "$title" != "$cmd" ] && [ "$title" != "$(hostname -s 2>/dev/null)" ]; then
           extra_line="${extra_line}${idx}=${title} "
         fi
       done <<< "$PANES_INFO"
@@ -120,9 +184,9 @@ while true; do
       row=1
       while [ "$row" -lt "$PANE_HEIGHT" ]; do
         if [ "$row" = "1" ] && [ -n "$extra_line" ]; then
-          echo "$extra_line"
+          printf '%s\n' "$extra_line"
         else
-          echo ""
+          printf '\n'
         fi
         ((row++)) || true
       done

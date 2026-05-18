@@ -42,6 +42,10 @@ set_default "@sidebar-key"          "$sidebar_default_key"
 set_default "@sidebar-toggle-key"   "$sidebar_default_toggle_key"
 set_default "@sidebar-refresh-interval" "$sidebar_default_refresh_interval"
 
+# Optional accent color override for the active pane indicator.
+# Falls back to window-status-current-style fg, then tmux blue (colour4).
+set_default "@sidebar-accent-color"  ""
+
 # ─── Key bindings ──────────────────────────────────────────────────
 
 tmux bind-key "$(tmux show-option -gqv "@sidebar-key")" \

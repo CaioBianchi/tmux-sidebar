@@ -91,3 +91,21 @@ get_main_pane_id() {
   echo ""
   return 1
 }
+
+# ─── Active / Current styles ───────────────────────────────────────
+
+get_window_status_current_style() {
+  tmux show-option -gqv "window-status-current-style" 2>/dev/null || true
+}
+
+get_window_status_current_bg() {
+  local style
+  style="$(get_window_status_current_style)"
+  extract_color "$style" "bg"
+}
+
+get_window_status_current_fg() {
+  local style
+  style="$(get_window_status_current_style)"
+  extract_color "$style" "fg"
+}

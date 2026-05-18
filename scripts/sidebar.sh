@@ -58,9 +58,17 @@ create_pane_sidebar() {
   [ -z "$bg" ] && bg="default"
   [ -z "$fg" ] && fg="default"
 
+  # Sidebar theming options.
+  local accent_color
+  accent_color="$(get_option "@sidebar-accent-color" "default")"
+
   # Create the sidebar pane without stealing focus (-d).
   local pane_id
-  pane_id="$(tmux split-window -d $split_args -P -F '#{pane_id}' "bash '$CURRENT_DIR/render.sh'")"
+  pane_id="$(tmux split-window -d $split_args -P -F '#{pane_id}' \
+    "bash '$CURRENT_DIR/render.sh'")"
+
+  # Lock input so the user cannot type into the sidebar.
+  tmux select-pane -t "$pane_id" -d
 
   # Tag it and record state / position.
   tmux set-option -p -t "$pane_id" "@sidebar-pane" "1"
@@ -70,6 +78,9 @@ create_pane_sidebar() {
 
   # Apply native status-bar colours to the pane.
   tmux select-pane -t "$pane_id" -P "bg=$bg,fg=$fg" >/dev/null 2>&1 || true
+
+  # Pass accent colour into the pane so render.sh can read it.
+  tmux set-option -p -t "$pane_id" "@sidebar-accent" "$accent_color"
 }
 
 # ─── Main ──────────────────────────────────────────────────────────
